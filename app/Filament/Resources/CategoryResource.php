@@ -157,18 +157,6 @@ class CategoryResource extends Resource
                     ->default(true) // NILAI DEFAULT TRUE sesuai permintaan
                     ->required(), // Kolom wajib diisi
 
-                // has_active_children dan has_children tidak perlu ditampilkan di form jika dihitung otomatis
-                // Jika ingin ditampilkan (readonly) untuk informasi:
-                Toggle::make('has_active_children')
-                    ->label('Has Active Children (Auto-calculated)')
-                    ->disabled() // Tidak bisa diedit
-                    ->helperText('Dihitung otomatis: apakah kategori ini memiliki sub-kategori aktif.'),
-
-                Toggle::make('has_children')
-                    ->label('Has Children (Auto-calculated)')
-                    ->disabled() // Tidak bisa diedit
-                    ->helperText('Dihitung otomatis: apakah kategori ini memiliki sub-kategori (aktif/tidak aktif).'),
-
             ])->columns(2); // Mengatur tata letak kolom utama form menjadi 2 kolom
     }
 
@@ -194,28 +182,6 @@ class CategoryResource extends Resource
                         // Menambahkan padding kiri berdasarkan level hirarki
                         return ['style' => 'padding-left: ' . ($indentation * 20) . 'px;'];
                     }),
-
-                // Kolom slug
-                TextColumn::make('slug')
-                    ->searchable() // Dapat dicari
-                    ->sortable(), // Dapat diurutkan
-
-                // Kolom parent category (menampilkan nama parent) - ini bisa dihapus atau disembunyikan jika tree view sudah cukup
-                // TextColumn::make('parent.display_name')
-                //     ->label('Parent Category')
-                //     ->placeholder('None')
-                //     ->sortable()
-                //     ->toggleable(isToggledHiddenByDefault: true), // Sembunyikan secara default jika sudah ada tree view
-
-                // Kolom icon untuk has_active_children (menampilkan icon boolean)
-                IconColumn::make('has_active_children')
-                    ->label('Has Active Children') // Label kolom
-                    ->boolean(), // Menampilkan sebagai icon boolean (centang/silang)
-
-                // Kolom icon untuk has_children (menampilkan icon boolean)
-                IconColumn::make('has_children')
-                    ->label('Has Children') // Label kolom
-                    ->boolean(), // Menampilkan sebagai icon boolean
 
                 // Kolom icon untuk is_prohibit
                 IconColumn::make('is_prohibit')
