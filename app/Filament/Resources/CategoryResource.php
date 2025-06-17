@@ -179,34 +179,33 @@ class CategoryResource extends Resource
     {
         return $table
             ->columns([
-                // Kolom ID (opsional jika terlalu banyak dan tidak relevan di tampilan utama)
-                TextColumn::make('id')
-                    ->label('ID')
-                    ->sortable() // Dapat diurutkan
-                    ->toggleable(isToggledHiddenByDefault: true), // Sembunyikan secara default
-
-                // Kolom nama kategori
-                TextColumn::make('name')
-                    ->searchable() // Dapat dicari
-                    ->sortable() // Dapat diurutkan
-                    ->label('Name (Internal)'), // Label kolom
-
-                // Kolom nama tampilan kategori
+                // Kolom display_name akan menjadi kolom utama yang menampilkan struktur pohon
                 TextColumn::make('display_name')
-                    ->searchable() // Dapat dicari
-                    ->sortable() // Dapat diurutkan
-                    ->label('Display Name'), // Label kolom
+                    ->searchable()
+                    ->sortable()
+                    ->label('Category Name')
+                    ->extraAttributes(function (Category $record) {
+                        $indentation = 0;
+                        $parent = $record->parent;
+                        while ($parent) {
+                            $indentation++;
+                            $parent = $parent->parent;
+                        }
+                        // Menambahkan padding kiri berdasarkan level hirarki
+                        return ['style' => 'padding-left: ' . ($indentation * 20) . 'px;'];
+                    }),
 
                 // Kolom slug
                 TextColumn::make('slug')
                     ->searchable() // Dapat dicari
                     ->sortable(), // Dapat diurutkan
 
-                // Kolom parent category (menampilkan nama parent)
-                TextColumn::make('parent.display_name') // Mengambil 'display_name' dari relasi 'parent'
-                    ->label('Parent Category') // Label kolom
-                    ->placeholder('None') // Teks jika tidak ada parent
-                    ->sortable(), // Dapat diurutkan
+                // Kolom parent category (menampilkan nama parent) - ini bisa dihapus atau disembunyikan jika tree view sudah cukup
+                // TextColumn::make('parent.display_name')
+                //     ->label('Parent Category')
+                //     ->placeholder('None')
+                //     ->sortable()
+                //     ->toggleable(isToggledHiddenByDefault: true), // Sembunyikan secara default jika sudah ada tree view
 
                 // Kolom icon untuk has_active_children (menampilkan icon boolean)
                 IconColumn::make('has_active_children')
@@ -285,7 +284,21 @@ class CategoryResource extends Resource
                     Tables\Actions\RestoreBulkAction::make(), // Aksi bulk restore
                     Tables\Actions\ForceDeleteBulkAction::make(), // Aksi bulk force delete
                 ]),
-            ]);
+            ])
+            // Tambahkan pengelompokan berdasarkan parent_id
+            // ->groupRecordsBy('parent_id')
+            // Mengatur label grup
+            ->groups([
+                Tables\Grouping\Group::make('parent_id')
+                    ->getTitleFromRecordUsing(function (?Category $record) {
+                        if ($record && $record->parent) {
+                            return $record->parent->display_name;
+                        }
+                        return 'Root Categories'; // Untuk kategori tanpa parent
+                    })
+                    ->collapsible(), // Membuat grup bisa dilipat
+            ])
+            ->defaultGroup('parent_id'); // Mengatur pengelompokan default
     }
 
     /**
@@ -320,7 +333,8 @@ class CategoryResource extends Resource
         // Menggunakan withTrashed() untuk menampilkan semua kategori (aktif, tidak aktif, soft deleted)
         // Jika hanya ingin menampilkan yang tidak di-soft delete, hapus ->withTrashed()
         return parent::getEloquentQuery()
-            ->orderBy('parent_id') // Urutkan berdasarkan parent_id (agar root di atas)
-            ->orderBy('name');     // Kemudian urutkan berdasarkan nama
+            // Penting: urutkan agar kategori induk muncul sebelum anaknya
+            ->with('parent')
+            ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END, parent_id, name');
     }
 }
