@@ -4,39 +4,34 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\CategoryResource\Pages;
 use App\Filament\Resources\CategoryResource\RelationManagers;
-use App\Models\Category; // Memastikan model Category diimpor
-use Filament\Forms;      // Mengimpor namespace Forms
-use Filament\Forms\Form; // Mengimpor kelas Form
-use Filament\Resources\Resource; // Mengimpor kelas Resource
-use Filament\Tables;     // Mengimpor namespace Tables
-use Filament\Tables\Table; // Mengimpor kelas Table
-use Illuminate\Database\Eloquent\Builder; // Mengimpor kelas Builder untuk query Eloquent
-use Illuminate\Database\Eloquent\SoftDeletingScope; // Mengimpor SoftDeletingScope (meskipun mungkin tidak langsung digunakan di sini)
-use Illuminate\Support\Str; // Mengimpor kelas Str untuk helper string seperti slug
+use App\Models\Category;
+use Filament\Forms;
+use Filament\Forms\Form;
+use Filament\Resources\Resource;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Str;
+use Illuminate\Support\Collection; // Pastikan ini diimpor
 
-// Mengimpor komponen Forms yang lebih spesifik untuk kejelasan
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
-use Filament\Forms\Components\KeyValue; // Digunakan untuk region_setting
-use Filament\Forms\Components\Fieldset; // Digunakan untuk mengelompokkan input region_setting
+use Filament\Forms\Components\KeyValue;
+use Filament\Forms\Components\Fieldset;
 
-// Mengimpor komponen Tables yang lebih spesifik
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 
 class CategoryResource extends Resource
 {
-    // Mendefinisikan model yang digunakan oleh resource ini
     protected static ?string $model = Category::class;
 
-    // Menentukan ikon navigasi untuk resource ini di sidebar Filament
     protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
 
-    // Mendefinisikan grup navigasi di sidebar (opsional, untuk kerapian)
     protected static ?string $navigationGroup = 'Shop Management';
 
-    // Mendefinisikan urutan navigasi dalam grup (opsional)
     protected static ?int $navigationSort = 1;
 
     /**
@@ -46,57 +41,78 @@ class CategoryResource extends Resource
     {
         return $form
             ->schema([
-                // Input untuk nama kategori
                 TextInput::make('name')
-                    ->required() // Kolom wajib diisi
-                    ->maxLength(255) // Batas maksimal karakter
-                    ->live(onBlur: true) // Mengaktifkan Livewire untuk memperbarui slug saat nama selesai diinput
+                    ->required()
+                    ->maxLength(255)
+                    ->live(onBlur: true)
                     ->afterStateUpdated(fn(string $operation, $state, Forms\Set $set) => $operation === 'create' ? $set('slug', Str::slug($state)) : null)
-                    ->helperText('Nama internal kategori, misal: "Women Clothes".') // Informasi bantuan untuk user
-                    ->columnSpan(1), // Mengatur lebar kolom di form
+                    ->helperText('Nama internal kategori, misal: "Women Clothes".')
+                    ->columnSpan(1),
 
-                // Input untuk slug kategori (otomatis dari nama, tapi bisa diedit manual)
                 TextInput::make('slug')
-                    ->required() // Kolom wajib diisi
-                    ->unique(ignoreRecord: true, table: Category::class) // Harus unik, abaikan record saat ini jika sedang edit
-                    ->maxLength(255) // Batas maksimal karakter
-                    ->helperText('URL yang mudah dibaca, otomatis terisi dari nama, misal: "women-clothes".') // Informasi bantuan
-                    ->columnSpan(1), // Mengatur lebar kolom di form
+                    ->required()
+                    ->unique(ignoreRecord: true, table: Category::class)
+                    ->maxLength(255)
+                    ->helperText('URL yang mudah dibaca, otomatis terisi dari nama, misal: "women-clothes".')
+                    ->columnSpan(1),
 
-                // Input untuk nama tampilan kategori
                 TextInput::make('display_name')
-                    ->required() // Kolom wajib diisi
-                    ->maxLength(255) // Batas maksimal karakter
-                    ->helperText('Nama yang akan ditampilkan ke pembeli, misal: "Pakaian Wanita".') // Informasi bantuan
-                    ->columnSpan('full'), // Mengatur lebar kolom penuh di form
+                    ->required()
+                    ->maxLength(255)
+                    ->helperText('Nama yang akan ditampilkan ke pembeli, misal: "Pakaian Wanita".')
+                    ->columnSpan('full'),
 
                 // Dropdown untuk memilih kategori induk (parent)
                 Select::make('parent_id')
-                    ->label('Parent Category') // Label input
-                    ->options(
-                        Category::pluck('display_name', 'id') // Mengambil semua kategori sebagai pilihan
-                            ->prepend('No Parent', null) // Menambahkan opsi 'No Parent' (null)
-                    )
+                    ->label('Parent Category')
+                    ->options(function () { // Menggunakan closure untuk opsi
+                        $options = static::getHierarchicalCategoryOptions(); // Ambil opsi hierarkis
+
+                        $currentRecordId = null;
+                        if ($record = request()->route('record')) {
+                            if (is_object($record) && method_exists($record, 'getKey')) {
+                                $currentRecordId = $record->getKey();
+                            } else {
+                                $currentRecordId = $record;
+                            }
+                        }
+
+                        if ($currentRecordId) {
+                            // Hapus kategori yang sedang diedit dari opsi parent
+                            unset($options[$currentRecordId]);
+
+                            // Opsional: Jika Anda juga ingin menghapus SEMUA keturunan dari record ini
+                            // untuk mencegah loop tak terbatas, Anda perlu fungsi untuk mendapatkan semua ID anak.
+                            // Contoh sederhana (tidak rekursif):
+                            // $children = Category::where('parent_id', $currentRecordId)->pluck('id')->toArray();
+                            // foreach ($children as $childId) {
+                            //     unset($options[$childId]);
+                            // }
+                            // Untuk solusi rekursif yang lebih kompleks, kita bisa bahas terpisah.
+                        }
+
+                        // Tambahkan opsi 'No Parent' di awal
+                        return collect($options)->prepend('No Parent', null)->all();
+                    })
                     ->searchable() // Mengaktifkan fitur pencarian dalam dropdown
                     ->placeholder('Select a parent category') // Placeholder
-                    ->helperText('Pilih kategori induk jika ini adalah sub-kategori. Kosongkan jika kategori utama.') // Informasi bantuan
+                    ->helperText('Pilih kategori induk jika ini adalah sub-kategori. Kosongkan jika kategori utama.')
                     ->nullable() // Memungkinkan kolom ini kosong (untuk kategori root)
                     ->columnSpan('full'), // Mengatur lebar kolom penuh
 
-                // Input untuk pengaturan wilayah (region_setting)
-                Fieldset::make('Region Settings') // Mengelompokkan input terkait pengaturan wilayah
+                Fieldset::make('Region Settings')
                     ->schema([
                         Toggle::make('region_setting.enable_size_chart')
                             ->label('Enable Size Chart')
                             ->helperText('Aktifkan jika kategori ini memerlukan panduan ukuran (misal: Pakaian).')
-                            ->default(false), // Default sesuai data contoh
+                            ->default(false),
 
                         TextInput::make('region_setting.low_stock_value')
                             ->label('Low Stock Value')
                             ->numeric()
                             ->default(0)
-                            ->helperText('Nilai batas stok rendah untuk kategori ini.')
-                            ->columnSpan(1),
+                            ->columnSpan(1)
+                            ->helperText('Nilai batas stok rendah untuk kategori ini.'),
 
                         Toggle::make('region_setting.dimension_mandatory')
                             ->label('Dimension Mandatory')
@@ -127,37 +143,32 @@ class CategoryResource extends Resource
                             ->label('GTIN Validation Rule')
                             ->numeric()
                             ->default(0)
-                            ->helperText('Aturan validasi GTIN (Global Trade Item Number) untuk kategori ini.')
-                            ->columnSpan(1),
+                            ->columnSpan(1)
+                            ->helperText('Aturan validasi GTIN (Global Trade Item Number) untuk kategori ini.'),
                     ])
-                    ->columns(2) // Mengatur tata letak kolom di dalam fieldset
-                    ->columnSpan('full'), // Fieldset mengisi lebar penuh form
+                    ->columns(2)
+                    ->columnSpan('full'),
 
-
-                // Toggle untuk status 'is_prohibit' (dari JSON asli)
                 Toggle::make('is_prohibit')
-                    ->label('Is Prohibited?') // Label input
-                    ->helperText('Tandai jika kategori ini dilarang dan tidak boleh tampil. Contoh: Barang Ilegal.') // Informasi bantuan
-                    ->default(false) // Nilai default FALSE
-                    ->required(), // Kolom wajib diisi (opsional, tergantung kebutuhan bisnis)
+                    ->label('Is Prohibited?')
+                    ->helperText('Tandai jika kategori ini dilarang dan tidak boleh tampil. Contoh: Barang Ilegal.')
+                    ->default(false)
+                    ->required(),
 
-                // Input untuk status izin (permit_status)
                 TextInput::make('permit_status')
-                    ->label('Permit Status') // Label input
-                    ->required() // Kolom wajib diisi
-                    ->numeric() // Hanya menerima input angka
-                    ->default(0) // Nilai default 0
-                    ->helperText('Status izin untuk kategori, nilai 0 (default) atau lainnya.') // Informasi bantuan
-                    ->columnSpan('full'), // Mengatur lebar kolom penuh
+                    ->label('Permit Status')
+                    ->required()
+                    ->numeric()
+                    ->default(0)
+                    ->helperText('Status izin untuk kategori, nilai 0 (default) atau lainnya.')
+                    ->columnSpan('full'),
 
-                // Toggle untuk status 'is_active' (kontrol visibilitas umum)
                 Toggle::make('is_active')
-                    ->label('Is Active?') // Label input
-                    ->helperText('Kontrol visibilitas kategori di tampilan publik (frontend).') // Informasi bantuan
-                    ->default(true) // NILAI DEFAULT TRUE sesuai permintaan
-                    ->required(), // Kolom wajib diisi
-
-            ])->columns(2); // Mengatur tata letak kolom utama form menjadi 2 kolom
+                    ->label('Is Active?')
+                    ->helperText('Kontrol visibilitas kategori di tampilan publik (frontend).')
+                    ->default(true)
+                    ->required(),
+            ])->columns(2);
     }
 
     /**
@@ -167,7 +178,6 @@ class CategoryResource extends Resource
     {
         return $table
             ->columns([
-                // Kolom display_name akan menjadi kolom utama yang menampilkan struktur pohon
                 TextColumn::make('display_name')
                     ->searchable()
                     ->sortable()
@@ -179,45 +189,37 @@ class CategoryResource extends Resource
                             $indentation++;
                             $parent = $parent->parent;
                         }
-                        // Menambahkan padding kiri berdasarkan level hirarki
                         return ['style' => 'padding-left: ' . ($indentation * 20) . 'px;'];
                     }),
 
-                // Kolom icon untuk is_prohibit
                 IconColumn::make('is_prohibit')
-                    ->label('Prohibited?') // Label kolom
-                    ->boolean(), // Menampilkan sebagai icon boolean
+                    ->label('Prohibited?')
+                    ->boolean(),
 
-                // Kolom permit_status
                 TextColumn::make('permit_status')
-                    ->numeric() // Menampilkan sebagai angka
-                    ->sortable(), // Dapat diurutkan
+                    ->numeric()
+                    ->sortable(),
 
-                // Kolom icon untuk is_active
                 IconColumn::make('is_active')
-                    ->label('Active?') // Label kolom
-                    ->boolean(), // Menampilkan sebagai icon boolean
+                    ->label('Active?')
+                    ->boolean(),
 
-                // Kolom created_at
                 TextColumn::make('created_at')
-                    ->dateTime() // Menampilkan sebagai tanggal dan waktu
-                    ->sortable() // Dapat diurutkan
-                    ->toggleable(isToggledHiddenByDefault: true), // Dapat disembunyikan secara default
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
-                // Kolom updated_at
                 TextColumn::make('updated_at')
-                    ->dateTime() // Menampilkan sebagai tanggal dan waktu
-                    ->sortable() // Dapat diurutkan
-                    ->toggleable(isToggledHiddenByDefault: true), // Dapat disembunyikan secara default
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
-                // Kolom deleted_at (untuk soft deletes)
                 TextColumn::make('deleted_at')
-                    ->dateTime() // Menampilkan sebagai tanggal dan waktu
-                    ->sortable() // Dapat diurutkan
-                    ->toggleable(isToggledHiddenByDefault: true), // Dapat disembunyikan secara default
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                // Filter untuk kategori induk (hanya menampilkan kategori root sebagai pilihan filter)
                 Tables\Filters\SelectFilter::make('parent_id')
                     ->label('Filter by Parent')
                     ->options(Category::whereNull('parent_id')->pluck('display_name', 'id'))
@@ -225,13 +227,11 @@ class CategoryResource extends Resource
                         $data['value'],
                         fn(Builder $query, $value): Builder => $query->where('parent_id', $value),
                     )),
-                // Filter ternary untuk status aktif
                 Tables\Filters\TernaryFilter::make('is_active')
                     ->label('Active Status')
                     ->trueLabel('Active')
                     ->falseLabel('Inactive')
                     ->placeholder('All Categories'),
-                // Filter ternary untuk status dilarang
                 Tables\Filters\TernaryFilter::make('is_prohibit')
                     ->label('Prohibited Status')
                     ->trueLabel('Prohibited')
@@ -239,32 +239,29 @@ class CategoryResource extends Resource
                     ->placeholder('All Categories'),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(), // Aksi edit untuk setiap baris
-                Tables\Actions\DeleteAction::make(), // Aksi delete (akan melakukan soft delete)
-                Tables\Actions\RestoreAction::make(), // Aksi restore (jika item di-soft delete)
-                Tables\Actions\ForceDeleteAction::make(), // Aksi force delete (menghapus permanen)
+                Tables\Actions\EditAction::make(),
+                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\RestoreAction::make(),
+                Tables\Actions\ForceDeleteAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(), // Aksi bulk delete (soft delete)
-                    Tables\Actions\RestoreBulkAction::make(), // Aksi bulk restore
-                    Tables\Actions\ForceDeleteBulkAction::make(), // Aksi bulk force delete
+                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\RestoreBulkAction::make(),
+                    Tables\Actions\ForceDeleteBulkAction::make(),
                 ]),
             ])
-            // Tambahkan pengelompokan berdasarkan parent_id
-            // ->groupRecordsBy('parent_id')
-            // Mengatur label grup
             ->groups([
                 Tables\Grouping\Group::make('parent_id')
                     ->getTitleFromRecordUsing(function (?Category $record) {
                         if ($record && $record->parent) {
                             return $record->parent->display_name;
                         }
-                        return 'Root Categories'; // Untuk kategori tanpa parent
+                        return 'Root Categories';
                     })
-                    ->collapsible(), // Membuat grup bisa dilipat
+                    ->collapsible(),
             ])
-            ->defaultGroup('parent_id'); // Mengatur pengelompokan default
+            ->defaultGroup('parent_id');
     }
 
     /**
@@ -273,9 +270,7 @@ class CategoryResource extends Resource
     public static function getRelations(): array
     {
         return [
-            // RelationManagers::make('ChildrenRelationManager', Category::class) // Contoh jika ingin mengelola anak dari halaman detail parent
-            // Untuk audit log, gunakan AuditRelationManager jika telah dibuat
-            // RelationManagers\AuditsRelationManager::class, // Memastikan AuditRelationManager diimpor
+            //
         ];
     }
 
@@ -285,9 +280,9 @@ class CategoryResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index' => Pages\ListCategories::route('/'),    // Halaman daftar kategori
-            'create' => Pages\CreateCategory::route('/create'), // Halaman buat kategori baru
-            'edit' => Pages\EditCategory::route('/{record}/edit'), // Halaman edit kategori
+            'index' => Pages\ListCategoryTree::route('/'),
+            'create' => Pages\CreateCategory::route('/create'),
+            'edit' => Pages\EditCategory::route('/{record}/edit'),
         ];
     }
 
@@ -296,11 +291,39 @@ class CategoryResource extends Resource
      */
     public static function getEloquentQuery(): Builder
     {
-        // Menggunakan withTrashed() untuk menampilkan semua kategori (aktif, tidak aktif, soft deleted)
-        // Jika hanya ingin menampilkan yang tidak di-soft delete, hapus ->withTrashed()
         return parent::getEloquentQuery()
-            // Penting: urutkan agar kategori induk muncul sebelum anaknya
-            ->with('parent')
-            ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END, parent_id, name');
+            ->with(['parent', 'parent.parent', 'parent.parent.parent'])
+            ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END ASC, parent_id ASC, display_name ASC');
+    }
+
+    /**
+     * Helper method to generate hierarchical category options for Select fields.
+     */
+    protected static function getHierarchicalCategoryOptions(): array
+    {
+        // Eager load all necessary parent levels to prevent N+1 queries during path building.
+        // Adjust the depth (e.g., .parent.parent.parent.parent) based on your maximum expected hierarchy.
+        $categories = Category::with('parent', 'parent.parent', 'parent.parent.parent', 'parent.parent.parent.parent')->get();
+        $options = [];
+
+        foreach ($categories as $category) {
+            $path = [$category->display_name]; // Mulai dengan nama kategori itu sendiri
+            $current = $category;
+
+            // Traverse ke atas ke parent root
+            // Gunakan `relationLoaded('parent')` untuk memastikan relasi sudah di-eager load
+            // dan tidak memicu kueri N+1
+            while ($current->relationLoaded('parent') && $current->parent) {
+                array_unshift($path, $current->parent->display_name); // Tambahkan nama parent ke awal
+                $current = $current->parent;
+            }
+
+            $options[$category->id] = implode(' > ', $path);
+        }
+
+        // Urutkan opsi secara alfabetis berdasarkan jalur tampilan mereka
+        asort($options);
+
+        return $options;
     }
 }
