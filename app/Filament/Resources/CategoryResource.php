@@ -2,27 +2,22 @@
 
 namespace App\Filament\Resources;
 
-use App\Filament\Resources\CategoryResource\Pages;
-use App\Filament\Resources\CategoryResource\RelationManagers;
-use App\Models\Category;
 use Filament\Forms;
+use App\Models\Category;
 use Filament\Forms\Form;
-use Filament\Resources\Resource;
-use Filament\Tables;
-use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Str;
-use Illuminate\Support\Collection; // Pastikan ini diimpor
-
+use Filament\Resources\Resource;
+use Illuminate\Http\UploadedFile;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
-use Filament\Forms\Components\KeyValue;
+
 use Filament\Forms\Components\Fieldset;
 
-use Filament\Tables\Columns\IconColumn;
-use Filament\Tables\Columns\TextColumn;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\FileUpload;
+use Illuminate\Database\Eloquent\Builder;
+use App\Filament\Resources\CategoryResource\Pages;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 class CategoryResource extends Resource
 {
@@ -55,6 +50,17 @@ class CategoryResource extends Resource
                     ->maxLength(255)
                     ->helperText('URL yang mudah dibaca, otomatis terisi dari nama, misal: "women-clothes".')
                     ->columnSpan(1),
+
+                FileUpload::make('image') // <-- Tambahkan ini
+                    ->label('Category Image')
+                    ->image() // Hanya menerima file gambar
+                    ->directory('category-images') // Folder penyimpanan di storage/app/public/
+                    ->disk('public') // Gunakan disk 'public'
+                    ->nullable() // Gambar tidak wajib
+                    ->getUploadedFileNameForStorageUsing(
+                        fn(TemporaryUploadedFile $file): string => (string) Str::random(40) . '.' . $file->getClientOriginalExtension(),
+                    )
+                    ->helperText('Unggah gambar untuk kategori. Maksimal ukuran 2MB.'),
 
                 TextInput::make('display_name')
                     ->required()
@@ -172,99 +178,6 @@ class CategoryResource extends Resource
     }
 
     /**
-     * Mendefinisikan skema tabel untuk menampilkan daftar kategori.
-     */
-    public static function table(Table $table): Table
-    {
-        return $table
-            ->columns([
-                TextColumn::make('display_name')
-                    ->searchable()
-                    ->sortable()
-                    ->label('Category Name')
-                    ->extraAttributes(function (Category $record) {
-                        $indentation = 0;
-                        $parent = $record->parent;
-                        while ($parent) {
-                            $indentation++;
-                            $parent = $parent->parent;
-                        }
-                        return ['style' => 'padding-left: ' . ($indentation * 20) . 'px;'];
-                    }),
-
-                IconColumn::make('is_prohibit')
-                    ->label('Prohibited?')
-                    ->boolean(),
-
-                TextColumn::make('permit_status')
-                    ->numeric()
-                    ->sortable(),
-
-                IconColumn::make('is_active')
-                    ->label('Active?')
-                    ->boolean(),
-
-                TextColumn::make('created_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                TextColumn::make('updated_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-
-                TextColumn::make('deleted_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-            ])
-            ->filters([
-                Tables\Filters\SelectFilter::make('parent_id')
-                    ->label('Filter by Parent')
-                    ->options(Category::whereNull('parent_id')->pluck('display_name', 'id'))
-                    ->query(fn(Builder $query, array $data): Builder => $query->when(
-                        $data['value'],
-                        fn(Builder $query, $value): Builder => $query->where('parent_id', $value),
-                    )),
-                Tables\Filters\TernaryFilter::make('is_active')
-                    ->label('Active Status')
-                    ->trueLabel('Active')
-                    ->falseLabel('Inactive')
-                    ->placeholder('All Categories'),
-                Tables\Filters\TernaryFilter::make('is_prohibit')
-                    ->label('Prohibited Status')
-                    ->trueLabel('Prohibited')
-                    ->falseLabel('Not Prohibited')
-                    ->placeholder('All Categories'),
-            ])
-            ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
-                Tables\Actions\RestoreAction::make(),
-                Tables\Actions\ForceDeleteAction::make(),
-            ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                    Tables\Actions\RestoreBulkAction::make(),
-                    Tables\Actions\ForceDeleteBulkAction::make(),
-                ]),
-            ])
-            ->groups([
-                Tables\Grouping\Group::make('parent_id')
-                    ->getTitleFromRecordUsing(function (?Category $record) {
-                        if ($record && $record->parent) {
-                            return $record->parent->display_name;
-                        }
-                        return 'Root Categories';
-                    })
-                    ->collapsible(),
-            ])
-            ->defaultGroup('parent_id');
-    }
-
-    /**
      * Mendefinisikan relasi yang akan ditampilkan di halaman detail/edit resource.
      */
     public static function getRelations(): array
@@ -284,16 +197,6 @@ class CategoryResource extends Resource
             'create' => Pages\CreateCategory::route('/create'),
             'edit' => Pages\EditCategory::route('/{record}/edit'),
         ];
-    }
-
-    /**
-     * Mengatur query Eloquent dasar untuk resource ini.
-     */
-    public static function getEloquentQuery(): Builder
-    {
-        return parent::getEloquentQuery()
-            ->with(['parent', 'parent.parent', 'parent.parent.parent'])
-            ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END ASC, parent_id ASC, display_name ASC');
     }
 
     /**

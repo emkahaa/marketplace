@@ -16,6 +16,7 @@ class Category extends Model
         'name',
         'display_name',
         'slug',
+        'image',
         'parent_id',
         'is_active',          // Kolom baru untuk status aktif/tidak aktif
         'has_active_children',
