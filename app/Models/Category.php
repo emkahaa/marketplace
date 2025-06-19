@@ -24,6 +24,9 @@ class Category extends Model
         'region_setting',
         'is_prohibit',
         'permit_status',
+        'status',
+        'meta_title',
+        'meta_description',
     ];
 
     // Casting tipe data untuk kolom-kolom tertentu
@@ -37,16 +40,20 @@ class Category extends Model
         'deleted_at' => 'datetime',           // Casting untuk soft deletes
     ];
 
-    // Relasi untuk kategori anak (children)
-    public function children()
+    // --- Relasi ---
+    public function products()
     {
-        return $this->hasMany(Category::class, 'parent_id');
+        return $this->hasMany(Product::class);
     }
 
-    // Relasi untuk kategori induk (parent)
     public function parent()
     {
         return $this->belongsTo(Category::class, 'parent_id');
+    }
+
+    public function children()
+    {
+        return $this->hasMany(Category::class, 'parent_id');
     }
 
     // Scope untuk mengambil hanya kategori root (tanpa parent)
